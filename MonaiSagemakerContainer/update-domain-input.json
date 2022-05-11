@@ -1,0 +1,14 @@
+
+{
+    "DomainId": "<domain-id>",
+    "DefaultUserSettings": {
+        "KernelGatewayAppSettings": {
+            "CustomImages": [
+                {
+                    "ImageName": "monaikernel",
+                    "AppImageConfigName": "custom-monai"
+                }
+            ]
+        }
+    }
+}

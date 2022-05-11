@@ -6,4 +6,10 @@ RUN pip install ipykernel && \
     python -m ipykernel install --sys-prefix && \
     pip install --no-cache-dir \
     'boto3' \
-    'sagemaker'
+    'sagemaker' \
+    'matplotlib' \
+    'jupyter' \
+    'ipywidgets' \
+    'widgetsnbextension'
+
+COPY train.py /root/train.py 

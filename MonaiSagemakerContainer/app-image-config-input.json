@@ -4,7 +4,7 @@
           "KernelSpecs": [
               {
                   "Name": "python3",
-                  "DisplayName": "Python 3"
+                  "DisplayName": "MONAI Kernel"
               }
           ],
           "FileSystemConfig": {
