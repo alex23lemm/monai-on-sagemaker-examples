@@ -2,10 +2,17 @@
 
 image_name=$1
 tag=$2
-account_id = $3
-region = $4
+account_id=$3
+region=$4
 
 fullname="${account_id}.dkr.ecr.${region}.amazonaws.com/${image_name}:${tag}"
+
+echo "Image Name: ${image_name}"
+echo "Tag: ${tag}"
+echo "Account Id: ${account_id}"
+echo "Region: ${region}"
+
+echo "Script executed from: ${PWD}"
 
 # Get the login command from ECR and execute it directly
 aws ecr get-login-password --region ${region} | docker login --username AWS --password-stdin ${account_id}.dkr.ecr.${region}.amazonaws.com
