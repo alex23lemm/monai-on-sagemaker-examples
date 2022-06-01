@@ -28,4 +28,3 @@ MonaiOnSagemakerInfrastructureStack(
     )
 
 app.synth()
-app.

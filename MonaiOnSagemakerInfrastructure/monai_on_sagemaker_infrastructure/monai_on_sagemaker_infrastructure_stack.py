@@ -21,6 +21,7 @@ class MonaiOnSagemakerInfrastructureStack(Stack):
             performance_mode=efs.PerformanceMode.GENERAL_PURPOSE,  # default
             out_of_infrequent_access_policy=efs.OutOfInfrequentAccessPolicy.AFTER_1_ACCESS
         )
+        file_system.connections.allow_default_port_from_any_ipv4("Allow In connection on Default port from any IPv4 address")
         
         
         sagemaker_monai_efs_id_parameter = ssm.StringParameter(

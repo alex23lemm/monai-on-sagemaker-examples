@@ -17,6 +17,11 @@ echo "Script executed from: ${PWD}"
 # Get the login command from ECR and execute it directly
 aws ecr get-login-password --region ${region} | docker login --username AWS --password-stdin ${account_id}.dkr.ecr.${region}.amazonaws.com
 
+
+# Base AWS DeepLearning Image
+aws ecr get-login-password --region eu-west-1 | docker login --username AWS --password-stdin 763104351884.dkr.ecr.${region}.amazonaws.com
+
+
 # If the repository doesn't exist in ECR, create it.
 aws ecr describe-repositories --repository-names ${image_name} || aws ecr create-repository --repository-name ${image_name}
 

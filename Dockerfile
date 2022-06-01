@@ -1,15 +1,19 @@
-FROM projectmonai/monai
+#FROM projectmonai/monai
+
+
+
+FROM 763104351884.dkr.ecr.eu-west-1.amazonaws.com/pytorch-training:1.11.0-gpu-py38-cu113-ubuntu20.04-sagemaker
 RUN apt-get update 
 RUN apt-get install -y git
 RUN pip install --upgrade pip
 RUN pip install ipykernel && \
     python -m ipykernel install --sys-prefix && \
     pip install --no-cache-dir \
+    'monai[gdown, nibabel, tqdm, ignite]' \
     'boto3' \
-    'sagemaker' \
     'matplotlib' \
     'jupyter' \
     'ipywidgets' \
     'widgetsnbextension'
 
-COPY train.py /root/train.py 
+# COPY sagemaker_train.py /root/sagemaker_train.py 
