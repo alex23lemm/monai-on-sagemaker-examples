@@ -183,7 +183,7 @@ def train(args):
     #    plt.imshow(val_data_example["label"][i, :, :, 60].detach().cpu())
     #plt.show()
     
-    max_epochs = 2
+    max_epochs = args.epochs
     val_interval = 1
     VAL_AMP = True
 
@@ -319,6 +319,7 @@ def train(args):
                     f" at epoch: {best_metric_epoch}"
                 )
         print(f"time consuming of epoch {epoch + 1} is: {(time.time() - epoch_start):.4f}")
+    save_model(model, args.model_dir)
     total_time = time.time() - total_start
     print(f"train completed, best_metric: {best_metric:.4f} at epoch: {best_metric_epoch}, total time: {total_time}.")
 
