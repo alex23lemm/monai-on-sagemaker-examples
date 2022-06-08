@@ -8,7 +8,7 @@ import os
 import re
 from collections import namedtuple
 
-import mxnet as mx
+#import mxnet as mx
 import numpy as np
 
 
@@ -19,8 +19,9 @@ class ModelHandler(object):
 
     def __init__(self):
         self.initialized = False
-        self.mx_model = None
+        self.model = None
         self.shapes = None
+        print("Model Handler Initialization")
 
     def get_model_files_prefix(self, model_dir):
         """
@@ -30,6 +31,10 @@ class ModelHandler(object):
         :param model_dir: Path to the directory with model artifacts
         :return: prefix string for model artifact files
         """
+        
+        print("Get Model Files Prefix")
+        
+        
         sym_file_suffix = "-symbol.json"
         checkpoint_prefix_regex = "{}/*{}".format(
             model_dir, sym_file_suffix
@@ -50,6 +55,9 @@ class ModelHandler(object):
         :param checkpoint_prefix: Model files prefix name
         :return: prefix string for model artifact files
         """
+        
+        print("Get Input Data Shapes")
+        
         shapes_file_path = os.path.join(model_dir, "{}-{}".format(checkpoint_prefix, "shapes.json"))
         if not os.path.isfile(shapes_file_path):
             raise RuntimeError("Missing {} file.".format(shapes_file_path))
@@ -72,11 +80,17 @@ class ModelHandler(object):
         :param context: Initial context contains model server system properties.
         :return:
         """
+        
+        print("Initialize")
+        
         self.initialized = True
         properties = context.system_properties
         # Contains the url parameter passed to the load request
         model_dir = properties.get("model_dir")
         gpu_id = properties.get("gpu_id")
+
+        print("Properties: ", properties)
+
 
         checkpoint_prefix = self.get_model_files_prefix(model_dir)
 
@@ -84,25 +98,25 @@ class ModelHandler(object):
         data_shapes = self.get_input_data_shapes(model_dir, checkpoint_prefix)
 
         # Load MXNet model
-        try:
-            ctx = mx.cpu()  # Set the context on CPU
-            sym, arg_params, aux_params = mx.model.load_checkpoint(
-                checkpoint_prefix, 0
-            )  # epoch set to 0
-            self.mx_model = mx.mod.Module(symbol=sym, context=ctx, label_names=None)
-            self.mx_model.bind(
-                for_training=False,
-                data_shapes=data_shapes,
-                label_shapes=self.mx_model._label_shapes,
-            )
-            self.mx_model.set_params(arg_params, aux_params, allow_missing=True)
-            with open("synset.txt", "r") as f:
-                self.labels = [l.rstrip() for l in f]
-        except (mx.base.MXNetError, RuntimeError) as memerr:
-            if re.search("Failed to allocate (.*) Memory", str(memerr), re.IGNORECASE):
-                logging.error("Memory allocation exception: {}".format(memerr))
-                raise MemoryError
-            raise
+        # try:
+        #     ctx = mx.cpu()  # Set the context on CPU
+        #     sym, arg_params, aux_params = mx.model.load_checkpoint(
+        #         checkpoint_prefix, 0
+        #     )  # epoch set to 0
+        #     self.mx_model = mx.mod.Module(symbol=sym, context=ctx, label_names=None)
+        #     self.mx_model.bind(
+        #         for_training=False,
+        #         data_shapes=data_shapes,
+        #         label_shapes=self.mx_model._label_shapes,
+        #     )
+        #     self.mx_model.set_params(arg_params, aux_params, allow_missing=True)
+        #     with open("synset.txt", "r") as f:
+        #         self.labels = [l.rstrip() for l in f]
+        # except (mx.base.MXNetError, RuntimeError) as memerr:
+        #     if re.search("Failed to allocate (.*) Memory", str(memerr), re.IGNORECASE):
+        #         logging.error("Memory allocation exception: {}".format(memerr))
+        #         raise MemoryError
+        #     raise
 
     def preprocess(self, request):
         """
@@ -112,21 +126,23 @@ class ModelHandler(object):
         """
         # Take the input data and pre-process it make it inference ready
 
+        print("Preprocess")
+        
         img_list = []
-        for idx, data in enumerate(request):
-            # Read the bytearray of the image from the input
-            img_arr = data.get("body")
+        # for idx, data in enumerate(request):
+        #     # Read the bytearray of the image from the input
+        #     img_arr = data.get("body")
 
-            # Input image is in bytearray, convert it to MXNet NDArray
-            img = mx.img.imdecode(img_arr)
-            if img is None:
-                return None
+        #     # Input image is in bytearray, convert it to MXNet NDArray
+        #     img = mx.img.imdecode(img_arr)
+        #     if img is None:
+        #         return None
 
-            # convert into format (batch, RGB, width, height)
-            img = mx.image.imresize(img, 224, 224)  # resize
-            img = img.transpose((2, 0, 1))  # Channel first
-            img = img.expand_dims(axis=0)  # batchify
-            img_list.append(img)
+        #     # convert into format (batch, RGB, width, height)
+        #     img = mx.image.imresize(img, 224, 224)  # resize
+        #     img = img.transpose((2, 0, 1))  # Channel first
+        #     img = img.expand_dims(axis=0)  # batchify
+        #     img_list.append(img)
 
         return img_list
 
@@ -136,10 +152,15 @@ class ModelHandler(object):
         :param model_input: transformed model input data list
         :return: list of inference output in NDArray
         """
+        
+        print("Inference")
+        
         # Do some inference call to engine here and return output
-        Batch = namedtuple("Batch", ["data"])
-        self.mx_model.forward(Batch(model_input))
-        prob = self.mx_model.get_outputs()[0].asnumpy()
+        #Batch = namedtuple("Batch", ["data"])
+        #self.mx_model.forward(Batch(model_input))
+        #prob = self.mx_model.get_outputs()[0].asnumpy()
+        prob = ""
+        
         return prob
 
     def postprocess(self, inference_output):
@@ -148,6 +169,9 @@ class ModelHandler(object):
         :param inference_output: list of inference output
         :return: list of predict results
         """
+        
+        print("postprocess")
+        
         # Take output from network and post-process to desired format
         prob = np.squeeze(inference_output)
         a = np.argsort(prob)[::-1]
@@ -160,6 +184,8 @@ class ModelHandler(object):
         :param context: mms context
         """
 
+        print("Handle")
+        
         model_input = self.preprocess(data)
         model_out = self.inference(model_input)
         return self.postprocess(model_out)
@@ -175,4 +201,4 @@ def handle(data, context):
     if data is None:
         return None
 
-    return _service.handle(data, context)ß
+    return _service.handle(data, context)

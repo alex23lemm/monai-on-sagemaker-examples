@@ -1,11 +1,17 @@
-FROM 763104351884.dkr.ecr.eu-west-1.amazonaws.com/pytorch-inference:1.11.0-gpu-py38-cu113-ubuntu20.04-sagemaker
+FROM 763104351884.dkr.ecr.eu-west-1.amazonaws.com/pytorch-training:1.11.0-gpu-py38-cu113-ubuntu20.04-sagemaker
+#FROM 763104351884.dkr.ecr.eu-west-1.amazonaws.com/pytorch-inference:1.11.0-gpu-py38-cu113-ubuntu20.04-sagemaker
 
-# Set a docker label to advertise multi-model support on the container
-LABEL com.amazonaws.sagemaker.capabilities.multi-models=true
-# Set a docker label to enable container to use SAGEMAKER_BIND_TO_PORT environment variable if present
-LABEL com.amazonaws.sagemaker.capabilities.accept-bind-to-port=true
 
-RUN apt-get update 
+RUN apt-get -y update && apt-get install -y --no-install-recommends \
+         wget \
+         python3-pip \
+         python3-setuptools \
+         nginx \
+         ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN ln -s /usr/bin/python3 /usr/bin/python
+
 RUN apt-get install -y git
 RUN pip install --upgrade pip
 RUN pip install ipykernel && \
@@ -16,19 +22,15 @@ RUN pip install ipykernel && \
     'matplotlib' \
     'jupyter' \
     'ipywidgets' \
-    'widgetsnbextension'
+    'widgetsnbextension' \
+    'flask' \
+    'gunicorn' \
+    'causalnex'
 
-ENV PATH="/opt/ml/code:${PATH}"
+ENV PYTHONUNBUFFERED=TRUE
+ENV PYTHONDONTWRITEBYTECODE=TRUE
+ENV PATH="/opt/program:${PATH}"
 
-COPY /model/model.pth /opt/ml/model/model.pth
-
-# /opt/ml and all subdirectories are utilized by SageMaker, we use the /code subdirectory to store our user code.
-COPY /source /opt/ml/code
-
-# this environment variable is used by the SageMaker PyTorch container to determine our user code directory.
-ENV SAGEMAKER_SUBMIT_DIRECTORY /opt/ml/code
-
-# this environment variable is used by the SageMaker PyTorch container to determine our program entry point
-# for training and serving.
-# For more information: https://github.com/aws/sagemaker-pytorch-container
-ENV SAGEMAKER_PROGRAM monai_inference.py
+# Set up the program in the image
+COPY source /opt/program
+WORKDIR /opt/program
