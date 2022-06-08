@@ -32,5 +32,5 @@ docker build --no-cache -t ${image_name} -f Dockerfile .
 docker tag ${image_name} ${fullname}
 
 echo "PUSHING IMAGE TO ECR ECR ${fullname}"
-docker push ${fullname}
+docker push ${fullname}ß
 
