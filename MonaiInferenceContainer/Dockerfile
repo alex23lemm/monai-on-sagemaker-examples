@@ -18,17 +18,17 @@ RUN pip install ipykernel && \
     'ipywidgets' \
     'widgetsnbextension'
 
-# Copy entrypoint script to the image
-COPY entrypoint.py /usr/local/bin/entrypoint.py
-RUN chmod +x /usr/local/bin/entrypoint.py
+ENV PATH="/opt/ml/code:${PATH}"
 
-RUN mkdir -p /home/model-server/
+COPY /model/model.pth /opt/ml/model/model.pth
 
-# Copy the default custom service file to handle incoming data and inference requests
-COPY model_handler.py /home/model-server/model_handler.py
+# /opt/ml and all subdirectories are utilized by SageMaker, we use the /code subdirectory to store our user code.
+COPY /source /opt/ml/code
 
-# Define an entrypoint script for the docker image
-ENTRYPOINT ["python", "/usr/local/bin/entrypoint.py"]
+# this environment variable is used by the SageMaker PyTorch container to determine our user code directory.
+ENV SAGEMAKER_SUBMIT_DIRECTORY /opt/ml/code
 
-# Define command to be passed to the entrypoint
-CMD ["serve"]
+# this environment variable is used by the SageMaker PyTorch container to determine our program entry point
+# for training and serving.
+# For more information: https://github.com/aws/sagemaker-pytorch-container
+ENV SAGEMAKER_PROGRAM monai_inference.py
