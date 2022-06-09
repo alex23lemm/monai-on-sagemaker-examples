@@ -57,6 +57,8 @@ import boto3
 
 import sagemaker.s3 as sagemaker_s3
 
+import tempfile
+
 VAL_AMP = True
 
 logger = logging.getLogger(__name__)
@@ -66,8 +68,7 @@ def model_fn(model_dir):
     logger.info("model dir %s", model_dir)
         
     device = get_device()
-    print('device is')
-    print(device)
+    print('device is : ', device)
     
     model = SegResNet(
         blocks_down=[1, 2, 2, 4],
@@ -86,7 +87,7 @@ def model_fn(model_dir):
     )
     model.eval()
     #model = torch.load(model_dir + '/model.pth', map_location=torch.device(device))
-    print(type(model))
+    print("Model Type : ", type(model))
     return model
 
 
@@ -124,8 +125,16 @@ class ConvertToMultiChannelBasedOnBratsClassesd(MapTransform):
 
 
 def input_fn(request_body, request_content_type):
+    f = io.BytesIO(request_body)
+    tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".nii.gz")
+    tfile.write(f.read())
+    print("Temporary filename: ", tfile.name)
+    
+    
+    
     #s3_data_uri = "s3://bcinspectio/old/brain_tumor/Task01_BrainTumor/imagesTr/BRATS_001.nii.gz"
-    sagemaker_s3.S3Downloader.download(request_body, "datasets")
+    #s3_data_uri = request_body.decode()
+    #sagemaker_s3.S3Downloader.download(s3_data_uri, "datasets")
     imtrans = Compose(
         [
             LoadImage(image_only=True),
@@ -148,42 +157,41 @@ def input_fn(request_body, request_content_type):
         EnsureTyped(keys=["image", "label"]),
     ]
     )
-    from os import walk
-    images = next(walk("datasets"), (None, None, []))[2]  # [] if no file
-    for i in range(len(images)):
-        images[i] = "datasets/" + images[i]
-    print(images)
+    #from os import walk
+    #images = next(walk("datasets"), (None, None, []))[2]  # [] if no file
+    #for i in range(len(images)):
+    #    images[i] = "datasets/" + images[i]
+    #print(images)
+    images = []
+    images.append(tfile.name)
+    print("Images list :", images)
     ds = ArrayDataset(images,imtrans)
     loader = torch.utils.data.DataLoader(
         ds, batch_size=10, num_workers=2, pin_memory=torch.cuda.is_available()
     )
     im = first(loader)
-    print(im.shape)
+    print("Image shape : ", im.shape)
     return im
 
 def predict_fn(data, model):
-    print('in custom predict function')
+    print(' ********  custom predict function *******')
     with torch.no_grad():
-    #     device = get_device()
-    #     model = model.to(device)
-    #     input_data = data.to(device)
-    #     model.eval()
-    #     output = model(input_data)
-        #dummy_data = torch.tensor(np.zeros((256,256),dtype=np.float32))
-        #print(dummy_data.shape)
         output = inference(data, model)    
-        #output = model(data)
     return output
 
     
-def output_fn(output_batch, accept='application/json'):
-    res = []
-    print('output list length')
-    print(len(output_batch))
-    for output in output_batch:
-         res.append({'boxes':output['boxes'].detach().cpu().numpy().tolist(),'labels':output['labels'].detach().cpu().numpy().tolist(),'scores':output['scores'].detach().cpu().numpy().tolist()})
+def output_fn(output_batch, accept='application/octet-stream'):
     
-    return json.dumps(res)
+    print("output : ", output_batch)
+    
+    return output_batch
+    # res = []
+    # print('output list length')
+    # print(len(output_batch))
+    # for output in output_batch:
+    #      res.append({'boxes':output['boxes'].detach().cpu().numpy().tolist(),'labels':output['labels'].detach().cpu().numpy().tolist(),'scores':output['scores'].detach().cpu().numpy().tolist()})
+    
+    # return json.dumps(res)
 
 def get_device():
     device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
