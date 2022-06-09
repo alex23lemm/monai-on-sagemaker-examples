@@ -1,0 +1,6 @@
+monai[gdown, nibabel, tqdm, ignite]
+boto3
+matplotlib
+jupyter
+ipywidgets
+widgetsnbextension
