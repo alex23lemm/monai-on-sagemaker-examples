@@ -38,48 +38,141 @@ from monai.utils import set_determinism
 
 from monai.apps import download_and_extract
 
+from monai.data import (
+    ArrayDataset, GridPatchDataset, create_test_image_3d, PatchIter)
+from monai.utils import first
+
+from monai.transforms import (
+    AddChannel,
+    Compose,
+    LoadImage,
+    RandSpatialCrop,
+    ScaleIntensity,
+    EnsureType,
+)
+
 import torch
 
+import boto3
 
+import sagemaker.s3 as sagemaker_s3
 
+VAL_AMP = True
 
 logger = logging.getLogger(__name__)
-
 def model_fn(model_dir):
+    print("Model Dir : ", model_dir)
+    
+    logger.info("model dir %s", model_dir)
+        
     device = get_device()
     print('device is')
     print(device)
-    model = torch.load(model_dir + '/model.pth', map_location=torch.device(device))
+    
+    model = SegResNet(
+        blocks_down=[1, 2, 2, 4],
+        blocks_up=[1, 1, 1],
+        init_filters=16,
+        in_channels=4,
+        out_channels=3,
+        dropout_prob=0.2,
+    )
+    # if torch.cuda.device_count() > 1:
+    #     print("Let's use", torch.cuda.device_count(), "GPUs!")
+    #     model = nn.DataParallel(model)
+    model.to(device)
+    model.load_state_dict(
+        torch.load(model_dir + '/model.pth')
+    )
+    model.eval()
+    #model = torch.load(model_dir + '/model.pth', map_location=torch.device(device))
     print(type(model))
     return model
 
 
+
+
+class ConvertToMultiChannelBasedOnBratsClassesd(MapTransform):
+    """
+    Convert labels to multi channels based on brats classes:
+    label 1 is the peritumoral edema
+    label 2 is the GD-enhancing tumor
+    label 3 is the necrotic and non-enhancing tumor core
+    The possible classes are TC (Tumor core), WT (Whole tumor)
+    and ET (Enhancing tumor).
+
+    """
+
+    def __call__(self, data):
+        d = dict(data)
+        for key in self.keys:
+            result = []
+            # merge label 2 and label 3 to construct TC
+            result.append(np.logical_or(d[key] == 2, d[key] == 3))
+            # merge labels 1, 2 and 3 to construct WT
+            result.append(
+                np.logical_or(
+                    np.logical_or(d[key] == 2, d[key] == 3), d[key] == 1
+                )
+            )
+            # label 2 is ET
+            result.append(d[key] == 2)
+            d[key] = np.stack(result, axis=0).astype(np.float32)
+        return d
+
+
+
+
 def input_fn(request_body, request_content_type):
-    # frame_width = 1024
-    # frame_height = 1024
-    # interval = 30
-    # f = io.BytesIO(request_body)
-    # tfile = tempfile.NamedTemporaryFile(delete=False)
-    # tfile.write(f.read())
-    # print(tfile.name)
-    # video_frames = video2frame(tfile,frame_width, frame_height, interval)  
-    # #convert to tensor of float32 type
-    # transform = transforms.Compose([
-    #     transforms.Lambda(lambda video_frames: torch.stack([transforms.ToTensor()(frame) for frame in video_frames])) # returns        a 4D tensor
-    # ])
-    # image_tensors = transform(video_frames)
-    image_tensors = np.zeros(1)
-    return image_tensors
+    #s3_data_uri = "s3://bcinspectio/old/brain_tumor/Task01_BrainTumor/imagesTr/BRATS_001.nii.gz"
+    sagemaker_s3.S3Downloader.download(request_body, "datasets")
+    imtrans = Compose(
+        [
+            LoadImage(image_only=True),
+            ScaleIntensity(),
+            EnsureType(),
+        ]
+    )
+    val_transform = Compose(
+    [
+        LoadImaged(keys=["image", "label"]),
+        EnsureChannelFirstd(keys="image"),
+        ConvertToMultiChannelBasedOnBratsClassesd(keys="label"),
+        Orientationd(keys=["image", "label"], axcodes="RAS"),
+        Spacingd(
+            keys=["image", "label"],
+            pixdim=(1.0, 1.0, 1.0),
+            mode=("bilinear", "nearest"),
+        ),
+        NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
+        EnsureTyped(keys=["image", "label"]),
+    ]
+    )
+    from os import walk
+    images = next(walk("datasets"), (None, None, []))[2]  # [] if no file
+    for i in range(len(images)):
+        images[i] = "datasets/" + images[i]
+    print(images)
+    ds = ArrayDataset(images,imtrans)
+    loader = torch.utils.data.DataLoader(
+        ds, batch_size=10, num_workers=2, pin_memory=torch.cuda.is_available()
+    )
+    im = first(loader)
+    print(im.shape)
+    return im
 
 def predict_fn(data, model):
     print('in custom predict function')
     with torch.no_grad():
-        device = get_device()
-        model = model.to(device)
-        input_data = data.to(device)
-        model.eval()
-        output = model(input_data)
-        
+    #     device = get_device()
+    #     model = model.to(device)
+    #     input_data = data.to(device)
+    #     model.eval()
+    #     output = model(input_data)
+        #dummy_data = torch.tensor(np.zeros((256,256),dtype=np.float32))
+        #print(dummy_data.shape)
+        output = inference(data, model)    
+        #output = model(data)
     return output
 
     
@@ -95,3 +188,20 @@ def output_fn(output_batch, accept='application/json'):
 def get_device():
     device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
     return device
+
+def inference(input, model):
+    
+    def _compute(input):
+        return sliding_window_inference(
+            inputs=input,
+            roi_size=(240, 240, 160),
+            sw_batch_size=1,
+            predictor=model,
+            overlap=0.5,
+        )
+
+    if VAL_AMP:
+        with torch.cuda.amp.autocast():
+            return _compute(input)
+    else:
+        return _compute(input)
