@@ -59,6 +59,8 @@ import sagemaker.s3 as sagemaker_s3
 
 import tempfile
 
+from zmq import device
+
 VAL_AMP = True
 
 logger = logging.getLogger(__name__)
@@ -81,10 +83,10 @@ def model_fn(model_dir):
     # if torch.cuda.device_count() > 1:
     #     print("Let's use", torch.cuda.device_count(), "GPUs!")
     #     model = nn.DataParallel(model)
-    model.to(device)
     model.load_state_dict(
         torch.load(model_dir + '/model.pth')
     )
+    model.to(device)
     model.eval()
     #model = torch.load(model_dir + '/model.pth', map_location=torch.device(device))
     print("Model Type : ", type(model))
@@ -128,6 +130,8 @@ def input_fn(request_body, request_content_type):
     f = io.BytesIO(request_body)
     tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".nii.gz")
     tfile.write(f.read())
+    tfile.seek(0)
+    tfile.close()
     print("Temporary filename: ", tfile.name)
     
     
@@ -166,17 +170,35 @@ def input_fn(request_body, request_content_type):
     images.append(tfile.name)
     print("Images list :", images)
     ds = ArrayDataset(images,imtrans)
+    print("Monai Dataset : ", ds)
     loader = torch.utils.data.DataLoader(
-        ds, batch_size=10, num_workers=2, pin_memory=torch.cuda.is_available()
+        ds, batch_size=1, num_workers=0, pin_memory=torch.cuda.is_available()
     )
+    print("Loader : ", loader)
     im = first(loader)
+    device = get_device()
+    print('device is : ', device)
+    im.to(device)
     print("Image shape : ", im.shape)
     return im
 
 def predict_fn(data, model):
     print(' ********  custom predict function *******')
+    image_tensor = data
+    print("Input Tesor size : ", image_tensor.shape)
+    print("Model Type : ", type(model))
     with torch.no_grad():
-        output = inference(data, model)    
+        temp = []
+        temp.append(image_tensor[0,:,:,:,0])
+        temp.append(image_tensor[0,:,:,:,1])
+        temp.append(image_tensor[0,:,:,:,2])
+        temp.append(image_tensor[0,:,:,:,3])
+
+        inf_data = torch.stack(temp)
+        inf_data = inf_data.expand(1,inf_data.shape[0],inf_data.shape[1], inf_data.shape[2], inf_data.shape[3] )
+        print("Inference Data Tensor Size : ", inf_data.shape)
+        output = inference(inf_data, model)
+        print("Prediction Tensor Size : ", output.shape)    
     return output
 
     
@@ -194,22 +216,40 @@ def output_fn(output_batch, accept='application/octet-stream'):
     # return json.dumps(res)
 
 def get_device():
-    device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+    #device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+    device = "cpu"
     return device
 
 def inference(input, model):
     
     def _compute(input):
-        return sliding_window_inference(
-            inputs=input,
-            roi_size=(240, 240, 160),
-            sw_batch_size=1,
-            predictor=model,
-            overlap=0.5,
-        )
+        print("Monai Model inside Compute : ")
+        print("Model Type : ", type(model))
+        print("Sliding Window Inference Object : ", sliding_window_inference)
+        try:
+            device = get_device()
+            print("device: ", device)
+            input.to(device)
+            model.to(device)
+            slid_window_inference = sliding_window_inference(
+                inputs=input,
+                roi_size=(240, 240, 160),
+                sw_batch_size=1,
+                predictor=model,
+                overlap=0.5,
+            )
+        except Exception as e:
+            print("Exception During Inference: ", e)
+        print("Sliding Window Inference Result Shape : ", slid_window_inference.shape)
+        return slid_window_inference
 
     if VAL_AMP:
         with torch.cuda.amp.autocast():
-            return _compute(input)
+            print("VAL AMP Custom Monai Inference")
+            print("Custom Inference Input Shape : ", input.shape)
+            inf_result = _compute(input)
+            print("Inference result shape : ", inf_result.shape)
+            return inf_result
     else:
+        print("Custom Monai Inference")
         return _compute(input)
