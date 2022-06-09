@@ -59,8 +59,6 @@ import sagemaker.s3 as sagemaker_s3
 
 import tempfile
 
-from zmq import device
-
 VAL_AMP = True
 
 logger = logging.getLogger(__name__)
@@ -86,7 +84,7 @@ def model_fn(model_dir):
     model.load_state_dict(
         torch.load(model_dir + '/model.pth')
     )
-    model.to(device)
+    model = model.to(device)
     model.eval()
     #model = torch.load(model_dir + '/model.pth', map_location=torch.device(device))
     print("Model Type : ", type(model))
@@ -133,12 +131,6 @@ def input_fn(request_body, request_content_type):
     tfile.seek(0)
     tfile.close()
     print("Temporary filename: ", tfile.name)
-    
-    
-    
-    #s3_data_uri = "s3://bcinspectio/old/brain_tumor/Task01_BrainTumor/imagesTr/BRATS_001.nii.gz"
-    #s3_data_uri = request_body.decode()
-    #sagemaker_s3.S3Downloader.download(s3_data_uri, "datasets")
     imtrans = Compose(
         [
             LoadImage(image_only=True),
@@ -146,39 +138,20 @@ def input_fn(request_body, request_content_type):
             EnsureType(),
         ]
     )
-    val_transform = Compose(
-    [
-        LoadImaged(keys=["image", "label"]),
-        EnsureChannelFirstd(keys="image"),
-        ConvertToMultiChannelBasedOnBratsClassesd(keys="label"),
-        Orientationd(keys=["image", "label"], axcodes="RAS"),
-        Spacingd(
-            keys=["image", "label"],
-            pixdim=(1.0, 1.0, 1.0),
-            mode=("bilinear", "nearest"),
-        ),
-        NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
-        EnsureTyped(keys=["image", "label"]),
-    ]
-    )
-    #from os import walk
-    #images = next(walk("datasets"), (None, None, []))[2]  # [] if no file
-    #for i in range(len(images)):
-    #    images[i] = "datasets/" + images[i]
-    #print(images)
+
     images = []
     images.append(tfile.name)
     print("Images list :", images)
     ds = ArrayDataset(images,imtrans)
     print("Monai Dataset : ", ds)
     loader = torch.utils.data.DataLoader(
-        ds, batch_size=1, num_workers=0, pin_memory=torch.cuda.is_available()
+        ds, batch_size=1, num_workers=0, pin_memory=False
     )
     print("Loader : ", loader)
     im = first(loader)
     device = get_device()
     print('device is : ', device)
-    im.to(device)
+    im = im.to(device)
     print("Image shape : ", im.shape)
     return im
 
@@ -197,6 +170,9 @@ def predict_fn(data, model):
         inf_data = torch.stack(temp)
         inf_data = inf_data.expand(1,inf_data.shape[0],inf_data.shape[1], inf_data.shape[2], inf_data.shape[3] )
         print("Inference Data Tensor Size : ", inf_data.shape)
+        
+        print("Tensor Type : ", inf_data.type)
+        
         output = inference(inf_data, model)
         print("Prediction Tensor Size : ", output.shape)    
     return output
@@ -204,7 +180,7 @@ def predict_fn(data, model):
     
 def output_fn(output_batch, accept='application/octet-stream'):
     
-    print("output : ", output_batch)
+    print("Prediction shape: ", output_batch.shape)
     
     return output_batch
     # res = []
@@ -216,21 +192,21 @@ def output_fn(output_batch, accept='application/octet-stream'):
     # return json.dumps(res)
 
 def get_device():
-    #device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-    device = "cpu"
+    device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+    #device = "cpu"
     return device
 
 def inference(input, model):
     
-    def _compute(input):
+    def _compute(input, model):
         print("Monai Model inside Compute : ")
         print("Model Type : ", type(model))
         print("Sliding Window Inference Object : ", sliding_window_inference)
         try:
             device = get_device()
             print("device: ", device)
-            input.to(device)
-            model.to(device)
+            input = input.to(device)
+            model = model.to(device)
             slid_window_inference = sliding_window_inference(
                 inputs=input,
                 roi_size=(240, 240, 160),
@@ -247,9 +223,9 @@ def inference(input, model):
         with torch.cuda.amp.autocast():
             print("VAL AMP Custom Monai Inference")
             print("Custom Inference Input Shape : ", input.shape)
-            inf_result = _compute(input)
+            inf_result = _compute(input, model)
             print("Inference result shape : ", inf_result.shape)
             return inf_result
     else:
         print("Custom Monai Inference")
-        return _compute(input)
+        return _compute(input, model)
