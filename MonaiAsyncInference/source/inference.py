@@ -59,6 +59,8 @@ import sagemaker.s3 as sagemaker_s3
 
 import tempfile
 
+import sagemaker.serializers as sm_serializers
+
 VAL_AMP = True
 
 logger = logging.getLogger(__name__)
@@ -181,8 +183,13 @@ def predict_fn(data, model):
 def output_fn(output_batch, accept='application/octet-stream'):
     
     print("Prediction shape: ", output_batch.shape)
+    print("Prediction Type : ", type(output_batch))
     
-    return output_batch
+    prediction_data = output_batch.cpu().detach()
+    
+    prediction_data = sm_serializers.NumpySerializer().serialize(output_batch.cpu().detach().numpy())
+    
+    return prediction_data
     # res = []
     # print('output list length')
     # print(len(output_batch))
