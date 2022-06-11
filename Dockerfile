@@ -1,6 +1,3 @@
-#FROM projectmonai/monai
-
-
 
 FROM 763104351884.dkr.ecr.eu-west-1.amazonaws.com/pytorch-training:1.11.0-gpu-py38-cu113-ubuntu20.04-sagemaker
 RUN apt-get update 
@@ -15,5 +12,3 @@ RUN pip install ipykernel && \
     'jupyter' \
     'ipywidgets' \
     'widgetsnbextension'
-
-# COPY sagemaker_train.py /root/sagemaker_train.py 
