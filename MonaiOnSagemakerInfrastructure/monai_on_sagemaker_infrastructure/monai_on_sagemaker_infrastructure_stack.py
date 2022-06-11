@@ -3,8 +3,11 @@ from aws_cdk import (
     Stack,
     aws_efs as efs,
     aws_ec2 as ec2,
-    aws_ssm as ssm
+    aws_ssm as ssm, 
+    aws_s3 as s3, 
+    aws_iam as iam
 )
+
 from constructs import Construct
 
 class MonaiOnSagemakerInfrastructureStack(Stack):
@@ -33,3 +36,54 @@ class MonaiOnSagemakerInfrastructureStack(Stack):
             string_value=file_system.file_system_id,
             tier=ssm.ParameterTier.STANDARD
         )
+        
+        # Create Bucket for aggregate raw text files
+        monaiOnSagemakerBucket = s3.Bucket(
+            self,
+            "MonaiOnSagemakerBucket", 
+            versioned = False
+        )
+
+        monaiOnSagemakerBucketParameter = ssm.StringParameter(
+            self, 
+            "MonaiOnSagemakertBucketParameter",
+            allowed_pattern=".*",
+            description="Bucket to store datasets for the MONAI on Sagemaker DEMO",
+            parameter_name="MonaiOnSagemakerBucketParameter",
+            string_value=monaiOnSagemakerBucket.bucket_name,
+            tier=ssm.ParameterTier.STANDARD
+        )
+        
+        monaiOnSagemakerRole = iam.Role(
+            self, 
+            "MonaiOnSagemakerRole", 
+            assumed_by=iam.ServicePrincipal("sagemaker.amazonaws.com")
+        )
+        monaiOnSagemakerRole.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name("AmazonS3FullAccess")
+        )
+        monaiOnSagemakerRole.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name("AmazonEC2ContainerRegistryFullAccess")
+        )
+        monaiOnSagemakerRole.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name("AWSCodeBuildAdminAccess")
+        )
+        monaiOnSagemakerRole.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSNSFullAccess")
+        )
+        monaiOnSagemakerRole.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSageMakerFullAccess")
+        )
+        monaiOnSagemakerRole.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSageMakerServiceCatalogProductsCodeBuildServiceRolePolicy")
+        )
+        monaiOnSagemakerRoleParameter = ssm.StringParameter(
+            self, 
+            "MonaiOnSagemakerRoleParameter",
+            allowed_pattern=".*",
+            description="Role for Sagemaker to access various services",
+            parameter_name="MonaiOnSagemakerRoleParameter",
+            string_value=monaiOnSagemakerRole.role_arn,
+            tier=ssm.ParameterTier.STANDARD
+        )
+

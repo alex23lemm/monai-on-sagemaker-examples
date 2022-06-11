@@ -32,5 +32,7 @@ docker build --no-cache -t ${image_name} -f Dockerfile .
 docker tag ${image_name} ${fullname}
 
 echo "PUSHING IMAGE TO ECR ECR ${fullname}"
-docker push ${fullname}ß
+docker push ${fullname}
+
+aws ssm put-parameter --name MonaiOnSagemakerContainerParameter --description MonaiContainerForSagemakerTraining --value ${fullname} --type String --tier Standard
 
