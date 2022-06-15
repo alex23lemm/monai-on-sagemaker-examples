@@ -19,7 +19,7 @@ aws ecr get-login-password --region ${region} | docker login --username AWS --pa
 
 
 # Base AWS DeepLearning Image
-aws ecr get-login-password --region eu-west-1 | docker login --username AWS --password-stdin 763104351884.dkr.ecr.${region}.amazonaws.com
+aws ecr get-login-password --region ${region}| docker login --username AWS --password-stdin 763104351884.dkr.ecr.${region}.amazonaws.com
 
 
 # If the repository doesn't exist in ECR, create it.
@@ -34,5 +34,5 @@ docker tag ${image_name} ${fullname}
 echo "PUSHING IMAGE TO ECR ECR ${fullname}"
 docker push ${fullname}
 
-aws ssm put-parameter --name MonaiOnSagemakerContainerParameter --description MonaiContainerForSagemakerTraining --value ${fullname} --type String --tier Standard
+aws ssm put-parameter --name MonaiOnSagemakerContainerParameter --description MonaiContainerForSagemakerTraining --value ${fullname} --type String --tier Standard --overwrite
 
